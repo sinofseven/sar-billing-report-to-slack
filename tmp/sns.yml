@@ -1,0 +1,368 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: SNS Stack
+
+Parameters:
+  Env:
+    Type: String
+
+Conditions:
+  IsNotOrangesheep: !Not [ !Equals [ !Ref Env, orangesheep ] ]
+
+Mappings:
+  SNSTopic:
+    development:
+      DisplayName: 開発
+    integration:
+      DisplayName: 結合テスト
+    staging:
+      DisplayName: ステージング
+    orangesheep:
+      DisplayName: 社内検証
+    rainbowsheep:
+      DisplayName: 外部検証
+
+Resources:
+  BudgetSNSTopic:
+    Condition: IsNotOrangesheep
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-budget-sns-topic-${Env}
+      Subscription:
+        - Endpoint: toshiki.hashida@lixil.com
+          Protocol: email
+        - Endpoint: hiroki.shigetomo@lixil.com
+          Protocol: email
+        - Endpoint: nakayama.koji@classmethod.jp
+          Protocol: email
+        - Endpoint: natsume.yuta@classmethod.jp
+          Protocol: email
+        - Endpoint: tanaka.takaaki@classmethod.jp
+          Protocol: email
+
+  BudgetSNSTopicPolicy:
+    Condition: IsNotOrangesheep
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref BudgetSNSTopic
+      PolicyDocument:
+        Id: !Sub lip-budget-sns-topic-policy-${Env}
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref BudgetSNSTopic
+
+  DeviceMonitoringSNSTopic:
+    Condition: IsNotOrangesheep
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: device_monitoring_topic
+      DisplayName: !Sub
+        - ${DisplayName}-デバイス監視
+        - DisplayName: !FindInMap [ SNSTopic, !Ref Env, DisplayName ]
+      Subscription:
+        - Endpoint: nakayama.koji@classmethod.jp
+          Protocol: email
+        - Endpoint: natsume.yuta@classmethod.jp
+          Protocol: email
+        - Endpoint: tanaka.takaaki@classmethod.jp
+          Protocol: email
+
+  # データ前処理のStepFunctionsをキックするためのLambdaのトリガーとなるSNS Topic
+  DataAnalysisTriggerSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-data-analysis-trigger-sns-topic-${Env}
+
+  DataAnalysisTriggerSNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref DataAnalysisTriggerSNSTopic
+      PolicyDocument:
+        Id: !Sub lip-data-analysis-trigger-sns-topic-policy-${Env}
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref DataAnalysisTriggerSNSTopic
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:s3:::lip-history-data-${Env}
+
+  # WAFログを確認するLambdaのトリガーとなるSNS Topic
+  WafLogsTriggerSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-waf-logs-trigger-sns-topic-${Env}
+
+  WafLogsTriggerSNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref WafLogsTriggerSNSTopic
+      PolicyDocument:
+        Id: !Sub lip-waf-logs-trigger-sns-topic-policy-${Env}
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref WafLogsTriggerSNSTopic
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:s3:::lip-*-waf-logs-${AWS::AccountId}-${Env}
+
+  NotificationHubSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-notification-hub-sns-topic-${Env}
+
+  OverflowCleanerDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-overflow-cleaner-${Env}
+
+  OverflowIngesterDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-overflow-ingester-${Env}
+
+  GetShadowHistoryDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-get-shadow-history-${Env}
+
+  DataAnalysisDispatcherDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-data-analysis-dispatcher-${Env}
+
+  CombineToiletHistoryDispatcherDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-combine-toilet-history-dispatcher-${Env}
+
+  CombineToiletHistoryExecutorDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-combine-toilet-history-executor-${Env}
+
+  ListDeviceHeartbeatDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-list-device-heartbeat-${Env}
+
+  FirmwareVersionIngesterDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-firmware-version-ingester-${Env}
+
+  CombineEventHistoryDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-combine-event-history-${Env}
+
+  GetKinesisPlaceHDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-get-kinesis-place-h-${Env}
+
+  CombinePlaceHDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-combine-place-h-${Env}
+
+  DeviceAliveMonitoringDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-device-alive-monitoring-${Env}
+
+  CheckDeviceHeartbeatDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-check-device-heartbeat-${Env}
+
+  DeadDeviceListMonitoringDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-dead-device-list-monitoring-${Env}
+
+  GlueJobErrorIngesterDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-glue-job-error-ingester-${Env}
+
+  RemoveDesiredAttributesFromDeviceShadowDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-remove-desired-attributes-from-device-shadow-${Env}
+
+  WafLogsNotifierDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-waf-logs-notifier-${Env}
+
+  CostAnalyzerDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-cost-analyzer-${Env}
+
+  WatchingIngesterDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-watching-ingester-${Env}
+
+  LocationPartitionAppenderDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-location-partition-appender-${Env}
+
+  AutoSoapSlackNotifyIngesterDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-auto-soap-slack-notify-ingester-${Env}
+
+  NotificationMailDlqTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub lip-dlq-topic-lip-notification-mail-${Env}
+
+Outputs:
+  BudgetSNSTopicArn:
+    Condition: IsNotOrangesheep
+    Value: !Ref BudgetSNSTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-BudgetSNSTopicArn
+
+  DataAnalysisTriggerSNSTopicArn:
+    Value: !Ref DataAnalysisTriggerSNSTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-DataAnalysisTriggerSNSTopicArn
+
+  WafLogsTriggerSNSTopicArn:
+    Value: !Ref WafLogsTriggerSNSTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-WafLogsTriggerSNSTopicArn
+
+  NotificationHubSNSTopicArn:
+    Value: !Ref NotificationHubSNSTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-NotificationHubSNSTopicArn
+
+  OverflowCleanerDlqTopicArn:
+    Value: !Ref OverflowCleanerDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-OverflowCleanerDlqTopicArn
+
+  OverflowIngesterDlqTopicArn:
+    Value: !Ref OverflowIngesterDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-OverflowIngesterDlqTopicArn
+
+  GetShadowHistoryDlqTopicArn:
+    Value: !Ref GetShadowHistoryDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-GetShadowHistoryDlqTopicArn
+
+  DataAnalysisDispatcherDlqTopicArn:
+    Value: !Ref DataAnalysisDispatcherDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-DataAnalysisDispatcherDlqTopicArn
+
+  CombineToiletHistoryDispatcherDlqTopicArn:
+    Value: !Ref CombineToiletHistoryDispatcherDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-CombineToiletHistoryDispatcherDlqTopicArn
+
+  CombineToiletHistoryExecutorDlqTopicArn:
+    Value: !Ref CombineToiletHistoryExecutorDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-CombineToiletHistoryExecutorDlqTopicArn
+
+  ListDeviceHeartbeatDlqTopicArn:
+    Value: !Ref ListDeviceHeartbeatDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-ListDeviceHeartbeatDlqTopicArn
+
+  FirmwareVersionIngesterDlqTopicArn:
+    Value: !Ref FirmwareVersionIngesterDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-FirmwareVersionIngesterDlqTopicArn
+
+  CombineEventHistoryDlqTopicArn:
+    Value: !Ref CombineEventHistoryDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-CombineEventHistoryDlqTopicArn
+
+  GetKinesisPlaceHDlqTopicArn:
+    Value: !Ref GetKinesisPlaceHDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-GetKinesisPlaceHDlqTopicArn
+
+  CombinePlaceHDlqTopicArn:
+    Value: !Ref CombinePlaceHDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-CombinePlaceHDlqTopicArn
+
+  DeviceAliveMonitoringDlqTopicArn:
+    Value: !Ref DeviceAliveMonitoringDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-DeviceAliveMonitoringDlqTopicArn
+
+  CheckDeviceHeartbeatDlqTopicArn:
+    Value: !Ref CheckDeviceHeartbeatDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-CheckDeviceHeartbeatDlqTopicArn
+
+  DeadDeviceListMonitoringDlqTopicArn:
+    Value: !Ref DeadDeviceListMonitoringDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-DeadDeviceListMonitoringDlqTopicArn
+
+  GlueJobErrorIngesterDlqTopicArn:
+    Value: !Ref GlueJobErrorIngesterDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-GlueJobErrorIngesterDlqTopicArn
+
+  RemoveDesiredAttributesFromDeviceShadowDlqTopicArn:
+    Value: !Ref RemoveDesiredAttributesFromDeviceShadowDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-RemoveDesiredAttributesFromDeviceShadowDlqTopicArn
+
+  WafLogsNotifierDlqTopicArn:
+    Value: !Ref WafLogsNotifierDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-WafLogsNotifierDlqTopicArn
+
+  CostAnalyzerDlqTopicArn:
+    Value: !Ref CostAnalyzerDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-CostAnalyzerDlqTopicArn
+
+  WatchingIngesterDlqTopicArn:
+    Value: !Ref WatchingIngesterDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-WatchingIngesterDlqTopicArn
+
+  LocationPartitionAppenderDlqTopicArn:
+    Value: !Ref LocationPartitionAppenderDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-LocationPartitionAppenderDlqTopicArn
+
+  AutoSoapSlackNotifyIngesterDlqTopicArn:
+    Value: !Ref AutoSoapSlackNotifyIngesterDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-AutoSoapSlackNotifyIngesterDlqTopicArn
+
+  NotificationMailDlqTopicArn:
+    Value: !Ref NotificationMailDlqTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-NotificationMailDlqTopicArn

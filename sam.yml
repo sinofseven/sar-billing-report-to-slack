@@ -1,0 +1,45 @@
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  LogRetentionDays:
+    Type: Number
+    Default: 7
+
+  SlackIncommingWebhookUrl:
+    Type: String
+
+  AccountName:
+    Type: String
+
+Resources:
+  PublisherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.7
+      Timeout: 120
+      MemorySize: 256
+      CodeUri: src
+      Handler: index.handler
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: "ce:GetCostAndUsage"
+              Resource: "*"
+      Environment:
+        Variables:
+          SLACK_INCOMMING_WEBHOOK_URL: !Ref SlackIncommingWebhookUrl
+          ACCOUNT_NAME: !Ref AccountName
+      Events:
+        NineOclock:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0 * * ? *)
+
+  PublisherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PublisherFunction}
+      RetentionInDays: !Ref LogRetentionDays
+
+
