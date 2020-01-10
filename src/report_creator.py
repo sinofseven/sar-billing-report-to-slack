@@ -130,7 +130,7 @@ def create_message(data: dict) -> str:
     message = "\n".join(
         [
             x
-            for x in [message_account, message_monthly, message_premonth, message_daily]
+            for x in ['<!channel>', message_account, message_monthly, message_premonth, message_daily]
             if x
         ]
     )
